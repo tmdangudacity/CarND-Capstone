@@ -34,7 +34,7 @@ class Controller(object):
         self.accel_limit = accel_limit
         self.wheel_radius = wheel_radius
 
-        self.last_vel  = 0.0
+        #self.last_vel  = 0.0
         self.last_time = rospy.get_time()
 
     def control(self, current_vel, dbw_enabled, linear_vel, angular_vel):
@@ -45,7 +45,6 @@ class Controller(object):
 
         if not dbw_enabled:
             self.throttle_controller.reset()
-            rospy.logwarn("DriveByWire disabled")
 
         else:
             filtered_vel = self.vel_lpf.filt(current_vel)
@@ -59,7 +58,7 @@ class Controller(object):
             steering = self.yaw_controller.get_steering(linear_vel, angular_vel, filtered_vel)
 
             vel_error = linear_vel - filtered_vel
-            self.last_vel = current_vel
+            #self.last_vel = current_vel
 
             current_time = rospy.get_time()
             sample_time = current_time - self.last_time

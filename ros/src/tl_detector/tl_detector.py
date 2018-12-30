@@ -54,7 +54,33 @@ class TLDetector(object):
         self.waypoints_2d = None
         self.waypoint_tree = None
 
-        rospy.spin()
+        #rospy.spin()
+        self.simulator_loop_test()
+
+    def simulator_loop_test(self):
+
+        #Testing simulation vehicle traffic data at 10Hz
+        rate = rospy.Rate(10)
+
+        while not rospy.is_shutdown():
+            light_wp, state = self.process_traffic_lights()
+
+            if self.state != state:
+                self.state_count = 0
+                self.state = state
+
+            elif self.state_count >= STATE_COUNT_THRESHOLD:
+                self.last_state = self.state
+                light_wp = light_wp if state == TrafficLight.RED else -1
+                self.last_wp = light_wp
+
+            self.state_count += 1
+
+            self.upcoming_red_light_pub.publish(Int32(self.last_wp))
+
+            #rospy.logwarn("Published Closest StopLightWpId {0}".format(self.last_wp))
+
+            rate.sleep()
 
     def pose_cb(self, msg):
         self.pose = msg
@@ -92,17 +118,17 @@ class TLDetector(object):
         if self.state != state:
             self.state_count = 0
             self.state = state
+
         elif self.state_count >= STATE_COUNT_THRESHOLD:
             self.last_state = self.state
             light_wp = light_wp if state == TrafficLight.RED else -1
             self.last_wp = light_wp
-            self.upcoming_red_light_pub.publish(Int32(light_wp))
-        else:
-            self.upcoming_red_light_pub.publish(Int32(self.last_wp))
-
-        rospy.logwarn("Last LightWpId {0}".format(self.last_wp))
 
         self.state_count += 1
+
+        self.upcoming_red_light_pub.publish(Int32(self.last_wp))
+
+        #rospy.logwarn("Published Closest StopLightWpId: {0}".format(self.last_wp))
 
     def get_closest_waypoint_idx(self, x, y):
         """Identifies the closest path waypoint to the given position
@@ -143,7 +169,7 @@ class TLDetector(object):
         rospy.logwarn("Traffic light image state: {0}".format(tl_img_state))
         """
 
-        #For testing with simulation, simply return the light.state from /vehicle/traffic_light
+        #Running with simulation, simply return the light.state from /vehicle/traffic_light
         return light.state
 
     def process_traffic_lights(self):
@@ -156,43 +182,44 @@ class TLDetector(object):
 
         """
         closest_light = None
+        min_d_idx = None
         line_wp_idx = -1
         light_state = TrafficLight.UNKNOWN
 
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
 
-        if(self.pose):
+
+        if(self.pose and self.waypoints.waypoints):
 
             car_wp_idx = self.get_closest_waypoint_idx(self.pose.pose.position.x, self.pose.pose.position.y)
+            min_d_idx = len(self.waypoints.waypoints)
 
             #Find the closest visible traffic light if one exists
-            diff = len(self.waypoints.waypoints)
-
             for (i, light) in enumerate(self.lights):
                 # Get stop line waypoint index
                 line = stop_line_positions[i]
                 temp_wp_idx = self.get_closest_waypoint_idx(line[0], line[1])
 
                 # Find the nearest pair of light/stop_line
-                d = temp_wp_idx - car_wp_idx
+                d_idx = temp_wp_idx - car_wp_idx
 
-                rospy.logwarn("Waypoints: {0}, StopLines: {1}, CarWpId {2}, StopLineWpId {3}, D: {4}".format(
-                                    len(self.waypoints.waypoints),
-                                    len(stop_line_positions),
-                                    car_wp_idx,
-                                    temp_wp_idx,
-                                    d))
+                #rospy.logwarn(" - Waypoints: {0}, StopLines: {1}, CarWpId {2}, StopLineWpId {3}, D_Idx: {4}".format(
+                #                    len(self.waypoints.waypoints),
+                #                    len(stop_line_positions),
+                #                    car_wp_idx,
+                #                    temp_wp_idx,
+                #                    d_idx))
 
-                if d >=0 and d < diff:
-                    diff = d
+                if(d_idx >= 0 and d_idx < min_d_idx):
+                    min_d_idx = d_idx
                     closest_light = light
                     line_wp_idx = temp_wp_idx
 
         if closest_light:
             light_state = self.get_light_state(closest_light)
 
-        rospy.logwarn("StopLineWpId: {0}, State: {1}".format(line_wp_idx, light_state))
+        #rospy.logwarn("Closest StopLineWpId: {0}, Min_D_Idx: {1}, State: {2}".format(line_wp_idx, min_d_idx, light_state))
 
         return line_wp_idx, light_state
 

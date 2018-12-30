@@ -2,6 +2,7 @@
 import numpy as np
 import rospy
 from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import TwistStamped
 from styx_msgs.msg import Lane, Waypoint
 from scipy.spatial import KDTree
 from std_msgs.msg import Int32
@@ -33,6 +34,7 @@ class WaypointUpdater(object):
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_cb)
 
         # A subscriber for /traffic_waypoint and /obstacle_waypoint below
         self.final_waypoints_pub = rospy.Publisher('/final_waypoints', Lane, queue_size=1)
@@ -43,6 +45,7 @@ class WaypointUpdater(object):
         self.waypoints_2d = None
         self.waypoint_tree = None
         self.stopline_wp_idx = -1
+        self.linear_vel = None
 
         self.loop()
 
@@ -53,6 +56,9 @@ class WaypointUpdater(object):
                 closest_waypoint_idx = self.get_closest_waypoint_idx()
                 self.publish_waypoints(closest_waypoint_idx)
             rate.sleep()
+
+    def velocity_cb(self, msg):
+        self.linear_vel = msg.twist.linear.x
 
     def get_closest_waypoint_idx(self):
         x = self.pose.pose.position.x
@@ -78,6 +84,7 @@ class WaypointUpdater(object):
 
     def publish_waypoints(self, closest_idx):
         final_lane = self.generate_lane(closest_idx)
+
         self.final_waypoints_pub.publish(final_lane)
 
     def generate_lane(self, closest_idx):
@@ -85,14 +92,13 @@ class WaypointUpdater(object):
         lane.header = self.base_waypoints.header
 
         farthest_idx = closest_idx + LOOKAHEAD_WPS
-        lane_waypoints = self.base_waypoints.waypoints[closest_idx:farthest_idx]
+        waypoints_ahead = self.base_waypoints.waypoints[closest_idx:farthest_idx]
 
         if (self.stopline_wp_idx == -1) or (self.stopline_wp_idx >= farthest_idx):
-            lane.waypoints = lane_waypoints
-        else:
-            lane.waypoints = self.decelerate_waypoints(lane_waypoints, closest_idx)
+            lane.waypoints = waypoints_ahead
 
-        lane.waypoints = lane_waypoints
+        else:
+            lane.waypoints = self.decelerate_waypoints(waypoints_ahead, closest_idx)
 
         return lane
 
@@ -101,30 +107,34 @@ class WaypointUpdater(object):
         stop_idx = max((self.stopline_wp_idx - closest_idx - 2), 0)
 
         full_dist = self.distance(waypoints, 0, stop_idx)
-        start_speed = waypoints[0].twist.twist.linear.x
+        decel = MAX_DECEL
 
-        decel = (start_speed * start_speed) / (2.0 * full_dist)
+        if (full_dist > 0.0):
+            temp_decel = (self.linear_vel * self.linear_vel) / (2.0 * full_dist)
 
-        if(decel > MAX_DECEL):
-            rospy.logwarn("Required decel. {0} exceeded max. {1}".format(decel, MAX_DECEL))
-            decel = MAX_DECEL
+            if(temp_decel < MAX_DECEL):
+                decel = temp_decel
+
+            rospy.logwarn("Full dist.: {0}, Speed: {1}, Decel. calc. {2}, max. {3}, used {4}".format(full_dist, self.linear_vel, temp_decel, MAX_DECEL, decel))
 
         for i, wp in enumerate(waypoints):
-            p = Waypoint()
-            p.pose = wp.pose
+            decel_p = Waypoint()
+            decel_p.pose = wp.pose
 
-            if (i == 0):
-                vel = wp.twist.twist.linear.x
-
-            else:
+            vel = 0.0
+            if (i < stop_idx):
                 dist = self.distance(waypoints, i, stop_idx)
+
                 vel = math.sqrt(2.0 * dist * decel)
 
                 if (vel < 1.0):
                     vel = 0.0
 
-            p.twist.twist.linear.x = vel
-            decel_waypoints.append(p)
+            rospy.logwarn(" - Id: {0}, Dist: {1}, Decel.: {2}, Vel.: {3}".format(i, dist, decel, vel))
+
+            decel_p.twist.twist.linear.x = vel
+
+            decel_waypoints.append(decel_p)
 
         return decel_waypoints
 

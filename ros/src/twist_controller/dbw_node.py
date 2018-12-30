@@ -98,6 +98,7 @@ class DBWNode(object):
 
     def dbw_enabled_cb(self, msg):
         self.dbw_enabled = msg
+        rospy.logwarn("DriveByWire: {0}".format(self.dbw_enabled))
 
     def twist_cb(self, msg):
         self.linear_vel = msg.twist.linear.x
