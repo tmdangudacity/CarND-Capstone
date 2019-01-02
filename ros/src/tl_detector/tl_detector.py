@@ -60,7 +60,7 @@ class TLDetector(object):
     def simulator_loop_test(self):
 
         #Testing simulation vehicle traffic data at 10Hz
-        rate = rospy.Rate(10)
+        rate = rospy.Rate(20)
 
         while not rospy.is_shutdown():
             light_wp, state = self.process_traffic_lights()
@@ -71,8 +71,7 @@ class TLDetector(object):
 
             elif self.state_count >= STATE_COUNT_THRESHOLD:
                 self.last_state = self.state
-                light_wp = light_wp if state == TrafficLight.RED else -1
-                self.last_wp = light_wp
+                self.last_wp = light_wp if state == TrafficLight.RED else -1
 
             self.state_count += 1
 
@@ -121,8 +120,7 @@ class TLDetector(object):
 
         elif self.state_count >= STATE_COUNT_THRESHOLD:
             self.last_state = self.state
-            light_wp = light_wp if state == TrafficLight.RED else -1
-            self.last_wp = light_wp
+            self.last_wp = light_wp if state == TrafficLight.RED else -1
 
         self.state_count += 1
 

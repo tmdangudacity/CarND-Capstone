@@ -24,8 +24,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
-MAX_DECEL = 10.0 # Maximum deceleration m/s2
-
+MAX_DECEL = 4.0 # Maximum deceleration m/s2
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -34,7 +33,6 @@ class WaypointUpdater(object):
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
-        rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_cb)
 
         # A subscriber for /traffic_waypoint and /obstacle_waypoint below
         self.final_waypoints_pub = rospy.Publisher('/final_waypoints', Lane, queue_size=1)
@@ -45,7 +43,6 @@ class WaypointUpdater(object):
         self.waypoints_2d = None
         self.waypoint_tree = None
         self.stopline_wp_idx = -1
-        self.linear_vel = None
 
         self.loop()
 
@@ -56,9 +53,6 @@ class WaypointUpdater(object):
                 closest_waypoint_idx = self.get_closest_waypoint_idx()
                 self.publish_waypoints(closest_waypoint_idx)
             rate.sleep()
-
-    def velocity_cb(self, msg):
-        self.linear_vel = msg.twist.linear.x
 
     def get_closest_waypoint_idx(self):
         x = self.pose.pose.position.x
@@ -98,24 +92,13 @@ class WaypointUpdater(object):
             lane.waypoints = waypoints_ahead
 
         else:
-            lane.waypoints = self.decelerate_waypoints(waypoints_ahead, closest_idx)
+            stop_idx = max((self.stopline_wp_idx - closest_idx - 4), 0)
+            lane.waypoints = self.decelerate_waypoints(waypoints_ahead, stop_idx)
 
         return lane
 
-    def decelerate_waypoints(self, waypoints, closest_idx):
+    def decelerate_waypoints(self, waypoints, stop_idx):
         decel_waypoints = []
-        stop_idx = max((self.stopline_wp_idx - closest_idx - 2), 0)
-
-        full_dist = self.distance(waypoints, 0, stop_idx)
-        decel = MAX_DECEL
-
-        if (full_dist > 0.0):
-            temp_decel = (self.linear_vel * self.linear_vel) / (2.0 * full_dist)
-
-            if(temp_decel < MAX_DECEL):
-                decel = temp_decel
-
-            rospy.logwarn("Full dist.: {0}, Speed: {1}, Decel. calc. {2}, max. {3}, used {4}".format(full_dist, self.linear_vel, temp_decel, MAX_DECEL, decel))
 
         for i, wp in enumerate(waypoints):
             decel_p = Waypoint()
@@ -124,16 +107,13 @@ class WaypointUpdater(object):
             vel = 0.0
             if (i < stop_idx):
                 dist = self.distance(waypoints, i, stop_idx)
-
-                vel = math.sqrt(2.0 * dist * decel)
-
+                vel = math.sqrt(2.0 * dist * MAX_DECEL)
                 if (vel < 1.0):
                     vel = 0.0
 
-            rospy.logwarn(" - Id: {0}, Dist: {1}, Decel.: {2}, Vel.: {3}".format(i, dist, decel, vel))
+                vel = min(vel, wp.twist.twist.linear.x)
 
             decel_p.twist.twist.linear.x = vel
-
             decel_waypoints.append(decel_p)
 
         return decel_waypoints
