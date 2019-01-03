@@ -71,7 +71,7 @@ class TLDetector(object):
 
             elif self.state_count >= STATE_COUNT_THRESHOLD:
                 self.last_state = self.state
-                self.last_wp = light_wp if state == TrafficLight.RED else -1
+                self.last_wp = light_wp if (state == TrafficLight.RED or state == TrafficLight.YELLOW) else -1
 
             self.state_count += 1
 
@@ -120,7 +120,7 @@ class TLDetector(object):
 
         elif self.state_count >= STATE_COUNT_THRESHOLD:
             self.last_state = self.state
-            self.last_wp = light_wp if state == TrafficLight.RED else -1
+            self.last_wp = light_wp if(state == TrafficLight.RED or state == TrafficLight.YELLOW) else -1
 
         self.state_count += 1
 
@@ -188,7 +188,7 @@ class TLDetector(object):
         stop_line_positions = self.config['stop_line_positions']
 
 
-        if(self.pose and self.waypoints.waypoints):
+        if(self.pose and self.waypoints and self.waypoint_tree):
 
             car_wp_idx = self.get_closest_waypoint_idx(self.pose.pose.position.x, self.pose.pose.position.y)
             min_d_idx = len(self.waypoints.waypoints)
